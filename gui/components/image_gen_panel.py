@@ -1,6 +1,6 @@
 import os
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, simpledialog
 from PIL import Image, ImageTk
 import threading
 import io
@@ -33,6 +33,14 @@ class ImageGenPanel(ttk.Frame):
         input_frame = ttk.LabelFrame(self, text="Image Generation")
         input_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         input_frame.columnconfigure(0, weight=1)
+        
+        # Model information
+        model_frame = ttk.Frame(input_frame)
+        model_frame.pack(fill=tk.X, pady=(5, 10))
+        
+        ttk.Label(model_frame, text="Using Model:").pack(side=tk.LEFT, padx=5)
+        self.model_label = ttk.Label(model_frame, text="imagen-3.0-generate-002")
+        self.model_label.pack(side=tk.LEFT, padx=5)
         
         # Prompt input
         ttk.Label(input_frame, text="Enter prompt for image:").pack(anchor=tk.W, pady=(10, 0))
@@ -135,7 +143,11 @@ class ImageGenPanel(ttk.Frame):
         
         def generate_in_thread():
             try:
-                success, image, message = self.genai.generate_image(prompt)
+                # Use only imagen-3.0-generate-002 model
+                success, image, message = self.genai.generate_image(
+                    prompt=prompt,
+                    model="imagen-3.0-generate-002"
+                )
                 
                 # Update UI in main thread
                 self.after(0, lambda: self._handle_image_result(success, image, message))
@@ -235,34 +247,34 @@ class ImageGenPanel(ttk.Frame):
             return
         
         # Ask for filename
-        filename = filedialog.asksaveasfilename(
-            initialdir=self.sandbox.sandbox_dir,
-            title="Save Image As",
-            filetypes=[("JPEG files", "*.jpg"), ("PNG files", "*.png")],
-            defaultextension=".jpg"
+        filename = simpledialog.askstring(
+            "Save Image As",
+            "Enter filename (with .jpg, .png extension):",
+            initialvalue="generated_image.jpg"
         )
         
         if not filename:
             return
+            
+        # Add extension if not specified
+        if not any(filename.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']):
+            filename += '.jpg'  # Default to jpg if no extension
         
-        # Extract just the filename without path
-        basename = os.path.basename(filename)
+        # Convert image to bytes
+        img_bytes = io.BytesIO()
+        format_type = 'JPEG' if filename.lower().endswith(('.jpg', '.jpeg')) else 'PNG'
+        self.current_image.save(img_bytes, format=format_type)
+        img_bytes = img_bytes.getvalue()
         
-        # Check if valid for sandbox
-        is_valid, path_or_error = self.sandbox._validate_path(basename)
-        if not is_valid:
-            if self.status_bar:
-                self.status_bar.show_error(path_or_error)
-            else:
-                messagebox.showerror("Error", path_or_error)
-            return
-        
-        # Save image via genai wrapper
-        success, message = self.genai.save_image(self.current_image, path_or_error)
+        # Save using the sandbox manager with binary mode
+        success, message = self.sandbox.write_file(filename, img_bytes, binary_mode=True)
         
         if success:
             if self.status_bar:
-                self.status_bar.show_message(f"Image saved to sandbox as {basename}")
+                self.status_bar.show_message(f"Image saved to sandbox as {filename}")
+            
+            # Trigger event to refresh file explorer
+            self.event_generate("<<FilesGenerated>>")
         else:
             if self.status_bar:
                 self.status_bar.show_error(message)

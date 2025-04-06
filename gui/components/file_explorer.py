@@ -360,28 +360,43 @@ class FileExplorer(ttk.Frame):
             system = platform.system()
             
             if system == "Windows":
-                # Windows: open cmd.exe or powershell
+                # Windows: open cmd.exe or powershell in a new window
                 try:
-                    # Try PowerShell first
-                    subprocess.Popen(["powershell.exe", "-NoExit", "-Command", f"cd '{sandbox_path}'"])
-                except Exception:
-                    # Fall back to cmd if PowerShell fails
-                    subprocess.Popen(["cmd.exe", "/k", f"cd /d {sandbox_path}"])
+                    # Try PowerShell first with explicit Start-Process to ensure a new window
+                    subprocess.Popen(["powershell.exe", "-NoExit", "-Command", 
+                        f"Start-Process powershell.exe -ArgumentList '-NoExit', '-Command', 'Set-Location \"{sandbox_path}\"'"])
+                except Exception as ps_error:
+                    print(f"PowerShell failed: {ps_error}")
+                    try:
+                        # Fall back to cmd if PowerShell fails, using start to create a new window
+                        subprocess.Popen(["cmd.exe", "/c", f"start cmd.exe /k cd /d {sandbox_path}"])
+                    except Exception as cmd_error:
+                        print(f"CMD failed: {cmd_error}")
+                        if self.status_bar:
+                            self.status_bar.show_error(f"Could not open terminal: {cmd_error}")
             
             elif system == "Darwin":
-                # macOS: open Terminal.app
-                subprocess.Popen(["open", "-a", "Terminal", sandbox_path])
+                # macOS: explicitly open a new Terminal window 
+                script = f"tell application \"Terminal\" to do script \"cd '{sandbox_path}'\" activate"
+                subprocess.Popen(["osascript", "-e", script])
             
             else:
-                # Linux/Unix: try various terminal emulators
-                terminals = ["gnome-terminal", "xterm", "konsole", "terminator", "xfce4-terminal"]
-                for terminal in terminals:
+                # Linux/Unix: use terminal-specific commands to open a new window
+                terminals_map = {
+                    "gnome-terminal": ["gnome-terminal", "--working-directory", sandbox_path],
+                    "konsole": ["konsole", "--workdir", sandbox_path],
+                    "xfce4-terminal": ["xfce4-terminal", "--working-directory", sandbox_path],
+                    "terminator": ["terminator", "--working-directory", sandbox_path],
+                    "xterm": ["xterm", "-e", f"cd '{sandbox_path}' && bash"]
+                }
+                
+                for terminal, command in terminals_map.items():
                     try:
-                        if terminal == "gnome-terminal":
-                            subprocess.Popen([terminal, "--working-directory", sandbox_path])
-                        else:
-                            subprocess.Popen([terminal, "-e", f"cd '{sandbox_path}' && bash"])
-                        break
+                        # Check if the terminal is available
+                        check_proc = subprocess.run(["which", terminal], capture_output=True, text=True)
+                        if check_proc.returncode == 0:
+                            subprocess.Popen(command)
+                            break
                     except Exception:
                         continue
                 else:

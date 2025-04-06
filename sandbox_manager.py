@@ -36,8 +36,15 @@ class SandboxManager:
         if filename.startswith('.'):
             return False, "Hidden files are not allowed."
             
-        # Allowed extensions (text-based files only)
-        allowed_extensions = ['.py', '.txt', '.md', '.json', '.html', '.css', '.js', '.csv']
+        # Allowed extensions
+        allowed_extensions = [
+            # Programming languages
+            '.py', '.js', '.html', '.css', '.rs', '.toml', '.cargo',
+            # Data formats
+            '.txt', '.md', '.json', '.csv', '.xml', '.yaml', '.yml',
+            # Images
+            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'
+        ]
         _, ext = os.path.splitext(filename)
         if ext.lower() not in allowed_extensions:
             return False, f"File type not allowed. Allowed types: {', '.join(allowed_extensions)}"
@@ -58,27 +65,43 @@ class SandboxManager:
             print(f"Error listing files: {e}")
             return []
     
-    def read_file(self, filename: str) -> Tuple[bool, str]:
-        """Read a file from the sandbox."""
+    def read_file(self, filename: str, binary_mode: bool = False) -> Tuple[bool, str]:
+        """Read a file from the sandbox. If binary_mode is True, returns bytes instead of string."""
         is_valid, path_or_error = self._validate_path(filename)
         if not is_valid:
             return False, path_or_error
             
         try:
-            with open(path_or_error, 'r', encoding='utf-8') as file:
+            # Check if it's a binary file format
+            _, ext = os.path.splitext(filename)
+            binary_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+            is_binary = ext.lower() in binary_extensions or binary_mode
+            
+            mode = 'rb' if is_binary else 'r'
+            encoding = None if is_binary else 'utf-8'
+            
+            with open(path_or_error, mode, encoding=encoding) as file:
                 content = file.read()
             return True, content
         except Exception as e:
             return False, f"Error reading file: {e}"
     
-    def write_file(self, filename: str, content: str) -> Tuple[bool, str]:
-        """Write content to a file in the sandbox."""
+    def write_file(self, filename: str, content: str, binary_mode: bool = False) -> Tuple[bool, str]:
+        """Write content to a file in the sandbox. If binary_mode is True, content should be bytes."""
         is_valid, path_or_error = self._validate_path(filename)
         if not is_valid:
             return False, path_or_error
             
         try:
-            with open(path_or_error, 'w', encoding='utf-8') as file:
+            # Check if it's a binary file format
+            _, ext = os.path.splitext(filename)
+            binary_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+            is_binary = ext.lower() in binary_extensions or binary_mode
+            
+            mode = 'wb' if is_binary else 'w'
+            encoding = None if is_binary else 'utf-8'
+            
+            with open(path_or_error, mode, encoding=encoding) as file:
                 file.write(content)
             return True, f"Successfully wrote to {filename}"
         except Exception as e:

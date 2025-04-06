@@ -18,7 +18,7 @@ class GenAIWrapper:
             raise ValueError("API key is required. Set GOOGLE_API_KEY environment variable or provide directly.")
         
         self.client = genai.Client(api_key=self.api_key)
-        self.model = "gemini-2.0-flash-001"  # Default model
+        self.model = "gemini-2.0-flash-001"  # Default model - more likely to be available
         self.image_model = "imagen-3.0-generate-002"  # Default image model
         self.system_prompt = ""  # Default system prompt
         self.generation_config = {  # Default generation config
@@ -31,6 +31,7 @@ class GenAIWrapper:
         # Initialize available models
         self.available_text_models = []
         self.available_image_models = []
+        self.available_embedding_models = []  # New category for embedding models
         self.fetch_available_models()
     
     def fetch_available_models(self) -> Tuple[bool, str]:
@@ -42,69 +43,91 @@ class GenAIWrapper:
         try:
             # Get all available models
             all_models = self.client.list_models()
-            models = [model.name for model in all_models]
+            self.available_text_models = []
+            self.available_image_models = []
+            self.available_embedding_models = []  # New category for embedding models
             
-            # Add hard-coded models that may not be returned by the API but are available
-            additional_models = [
-                "gemini-2.5-pro",
-                "gemini-2.5-flash",
-                "gemini-2.0-flash-001",
-                "gemini-2.0-pro-001",
-                "gemini-1.5-flash-001",
-                "gemini-1.5-pro-001",
-                "gemini-1.0-pro-001",
-                "imagen-3.0-generate-002"
-            ]
-            
-            # Check if any model names in the list match our additional models
-            for additional_model in additional_models:
-                if not any(additional_model in model.lower() for model in models):
-                    models.append(additional_model)
-            
-            # Filter for text models (Gemini)
-            self.available_text_models = [
-                model for model in models 
-                if ('gemini' in model.lower() and not model.lower().endswith('vision')) or
-                   ('palm' in model.lower() and not 'vision' in model.lower())
-            ]
-            
-            # Filter for image models (Imagen)
-            self.available_image_models = [
-                model for model in models
-                if ('imagen' in model.lower() and 'generate' in model.lower()) or
-                   ('imagegeneration' in model.lower())
-            ]
-            
-            # Sort models by version (newer first)
-            def model_priority(model_name):
-                model_name = model_name.lower()
-                if '2.5' in model_name:
-                    return 0  # Highest priority
-                elif '2.0' in model_name:
-                    return 1
-                elif '1.5' in model_name:
-                    return 2
-                elif '1.0' in model_name:
-                    return 3
+            # Print available models for debugging
+            print("Available models from API:")
+            for model in all_models:
+                model_id = model.name
+                if 'gemini' in model_id.lower() and 'embedding' in model_id.lower():
+                    print(f"- {model_id} (Embedding model)")
+                    self.available_embedding_models.append(model_id)
+                elif 'gemini' in model_id.lower():
+                    print(f"- {model_id} (Text model)")
+                    self.available_text_models.append(model_id)
+                elif 'imagen' in model_id.lower():
+                    print(f"- {model_id} (Image model)")
+                    self.available_image_models.append(model_id)
+                elif 'gemma' in model_id.lower():
+                    print(f"- {model_id} (Other model)")
+                    self.available_text_models.append(model_id)
+                elif 'embedding' in model_id.lower():
+                    print(f"- {model_id} (Embedding model)")
+                    self.available_embedding_models.append(model_id)
                 else:
-                    return 4  # Lowest priority
-                
-            self.available_text_models.sort(key=model_priority)
+                    print(f"- {model_id} (Other)")
             
-            # If no models found, use defaults
+            # Default embedding models
+            if not self.available_embedding_models:
+                self.available_embedding_models = [
+                    "gemini-embedding-exp-03-07",  # Experimental Gemini-based embeddings
+                    "text-embedding-004"           # Standard text embeddings
+                ]
+            
+            # If no models were found, add these safe defaults including newer models
             if not self.available_text_models:
                 self.available_text_models = [
-                    "gemini-2.5-pro",
-                    "gemini-2.5-flash",
-                    "gemini-2.0-flash-001",
-                    "gemini-2.0-pro-001", 
-                    "gemini-1.5-flash-001",
-                    "gemini-1.5-pro-001",
-                    "gemini-1.0-pro-001"
+                    "gemini-2.5-pro-preview-03-25",     # Newest Gemini 2.5 Pro (billing enabled)
+                    "gemini-2.5-pro-exp-03-25",         # Experimental Gemini 2.5 Pro (free tier)
+                    "gemini-2.0-flash-001",             # Gemini 2.0 Flash
+                    "gemini-2.0-pro-001",               # Gemini 2.0 Pro
+                    "gemini-2.0-flash-lite",            # Gemini 2.0 Flash-Lite
+                    "gemini-1.5-flash-001",             # Gemini 1.5 Flash
+                    "gemini-1.5-pro-001",               # Gemini 1.5 Pro
+                    "gemma-3-27b-it",                   # Gemma 3 27B
+                    "gemini-1.0-pro-001"                # Gemini 1.0 Pro (legacy)
                 ]
             
             if not self.available_image_models:
-                self.available_image_models = ["imagen-3.0-generate-002"]
+                self.available_image_models = [
+                    "imagen-3.0-generate-002",
+                    "gemini-2.0-flash-imagen"           # Experimental Gemini with image generation/editing
+                ]
+            
+            # Sort models from newest to oldest versions
+            def model_priority(model_name):
+                model_name = model_name.lower()
+                # Version-based priority
+                if '2.5' in model_name:
+                    base_priority = 0  # Highest priority
+                elif '2.0' in model_name:
+                    base_priority = 10
+                elif '1.5' in model_name:
+                    base_priority = 20
+                elif 'gemma-3' in model_name:
+                    base_priority = 5
+                elif '1.0' in model_name:
+                    base_priority = 30
+                else:
+                    base_priority = 40  # Lowest priority
+                
+                # Model type refinement
+                if 'pro' in model_name and 'preview' in model_name:
+                    return base_priority     # Pro preview gets highest within version
+                elif 'pro' in model_name and 'exp' in model_name:
+                    return base_priority + 1 # Experimental pro
+                elif 'pro' in model_name:
+                    return base_priority + 2 # Regular pro 
+                elif 'flash' in model_name and 'lite' in model_name:
+                    return base_priority + 4 # Flash lite
+                elif 'flash' in model_name:
+                    return base_priority + 3 # Flash
+                else:
+                    return base_priority + 5
+                
+            self.available_text_models.sort(key=model_priority)
             
             # Ensure current models are in the available lists
             if self.model not in self.available_text_models and self.available_text_models:
@@ -113,20 +136,50 @@ class GenAIWrapper:
             if self.image_model not in self.available_image_models and self.available_image_models:
                 self.image_model = self.available_image_models[0]
                 
-            return True, f"Found {len(self.available_text_models)} text models and {len(self.available_image_models)} image models"
+            return True, f"Found {len(self.available_text_models)} text models, {len(self.available_image_models)} image models, and {len(self.available_embedding_models)} embedding models"
         except Exception as e:
-            # Use defaults on error
+            # Use defaults on error including newer models
             self.available_text_models = [
-                "gemini-2.5-pro",
-                "gemini-2.5-flash",
-                "gemini-2.0-flash-001",
-                "gemini-2.0-pro-001",
-                "gemini-1.5-flash-001",
-                "gemini-1.5-pro-001",
-                "gemini-1.0-pro-001"
+                "gemini-2.5-pro-preview-03-25",     # Newest Gemini 2.5 Pro (billing enabled)
+                "gemini-2.5-pro-exp-03-25",         # Experimental Gemini 2.5 Pro (free tier)
+                "gemini-2.0-flash-001",             # Gemini 2.0 Flash
+                "gemini-2.0-pro-001",               # Gemini 2.0 Pro
+                "gemini-2.0-flash-lite",            # Gemini 2.0 Flash-Lite
+                "gemini-1.5-flash-001",             # Gemini 1.5 Flash
+                "gemini-1.5-pro-001",               # Gemini 1.5 Pro
+                "gemma-3-27b-it",                   # Gemma 3 27B
+                "gemini-1.0-pro-001"                # Gemini 1.0 Pro (legacy)
             ]
-            self.available_image_models = ["imagen-3.0-generate-002"]
+            self.available_image_models = [
+                "imagen-3.0-generate-002", 
+                "gemini-2.0-flash-imagen"
+            ]
             return False, f"Error fetching models: {e}"
+    
+    def test_model_availability(self, model_name: str) -> Tuple[bool, str]:
+        """Test if a specific model is available and working.
+        
+        Args:
+            model_name: The name of the model to test
+            
+        Returns:
+            Tuple of (success, message)
+        """
+        try:
+            # Try a simple request to see if the model works
+            response = self.client.models.generate_content(
+                model=model_name,
+                contents="Hello",
+                config=types.GenerateContentConfig(
+                    temperature=0.1,
+                    max_output_tokens=10
+                )
+            )
+            
+            # If we get here, the model is available
+            return True, f"Model {model_name} is available"
+        except Exception as e:
+            return False, f"Model {model_name} is not available: {str(e)}"
     
     def get_available_text_models(self) -> List[str]:
         """Get the list of available text models.
@@ -397,104 +450,104 @@ class GenAIWrapper:
         
         return files_dict
     
-    def generate_image(self, prompt: str) -> Tuple[bool, Optional[Image.Image], str]:
+    def generate_image(self, prompt: str, model: str = "imagen-3.0-generate-002") -> Tuple[bool, Optional[Image.Image], str]:
         """Generate an image based on a prompt.
         
         Args:
             prompt: Text description of the desired image
+            model: Image model to use, defaults to Imagen 3.0
             
         Returns:
             Tuple of (success, image_object, message)
         """
         try:
-            # Check if image model is available
-            if not self.image_model:
-                return False, None, "No image generation model available"
-            
             # Check if prompt is too short
             if len(prompt.strip()) < 3:
                 return False, None, "Prompt is too short. Please provide a more detailed description."
+                
+            # Prepare configuration
+            generation_config = types.GenerateImagesConfig(
+                number_of_images=1,
+                output_mime_type='image/jpeg',
+                guidance_scale=9.0  # Higher values adhere more closely to prompt
+            )
             
             # Generate image with error handling
             try:
                 response = self.client.models.generate_images(
-                    model=self.image_model,
+                    model=model,
                     prompt=prompt,
-                    config=types.GenerateImagesConfig(
-                        number_of_images=1,
-                        output_mime_type='image/jpeg',
-                        guidance_scale=9.0  # Higher values adhere more closely to prompt
-                    )
+                    config=generation_config
                 )
-                
-                if not hasattr(response, 'generated_images') or not response.generated_images:
-                    return False, None, "No images were generated in the response"
-                
-                # First image from the response
-                if len(response.generated_images) > 0 and hasattr(response.generated_images[0], 'image'):
-                    image_data = response.generated_images[0].image
-                    
-                    # Handle different image return types
-                    if isinstance(image_data, Image.Image):
-                        # Already a PIL Image
-                        return True, image_data, "Image generated successfully"
-                    elif isinstance(image_data, str) and image_data.startswith('data:image'):
-                        # Base64 data
-                        image_data = image_data.split(',')[1]
-                        image = Image.open(io.BytesIO(base64.b64decode(image_data)))
-                        return True, image, "Image generated successfully"
-                    elif isinstance(image_data, bytes):
-                        # Raw image bytes
-                        image = Image.open(io.BytesIO(image_data))
-                        return True, image, "Image generated successfully"
-                    elif hasattr(image_data, 'data') and isinstance(image_data.data, bytes):
-                        # Google API image type with binary data
-                        image = Image.open(io.BytesIO(image_data.data))
-                        return True, image, "Image generated successfully"
-                    elif hasattr(image_data, 'data') and isinstance(image_data.data, str):
-                        # Google API image type with base64 data
-                        image = Image.open(io.BytesIO(base64.b64decode(image_data.data)))
-                        return True, image, "Image generated successfully"
-                    elif hasattr(image_data, '__dict__'):
-                        # Google genai types.Image - handle this explicitly 
-                        try:
-                            # Try to access binary data via an attribute
-                            if hasattr(image_data, 'data'):
-                                image_bytes = image_data.data
-                            elif hasattr(image_data, 'image_bytes'):
-                                image_bytes = image_data.image_bytes
-                            elif hasattr(image_data, 'bytes'):
-                                image_bytes = image_data.bytes
-                            else:
-                                # Try to get data from the dict
-                                dict_data = image_data.__dict__
-                                for attr in dict_data:
-                                    if isinstance(dict_data[attr], bytes):
-                                        image_bytes = dict_data[attr]
-                                        break
-                                    elif isinstance(dict_data[attr], str) and dict_data[attr].startswith('data:image'):
-                                        data = dict_data[attr].split(',')[1]
-                                        image_bytes = base64.b64decode(data)
-                                        break
-                                else:
-                                    return False, None, f"Couldn't extract image data from {type(image_data)}"
-                            
-                            # Convert to PIL Image
-                            image = Image.open(io.BytesIO(image_bytes))
-                            return True, image, "Image generated successfully"
-                        except Exception as e:
-                            return False, None, f"Error processing image data: {str(e)}"
-                    else:
-                        return False, None, f"Unsupported image format returned: {type(image_data)}"
-                else:
-                    return False, None, "Generated image data is invalid"
-                    
             except genai.ModelError as model_err:
                 return False, None, f"Model Error: {str(model_err)}"
             except genai.PermissionDeniedError as perm_err:
                 return False, None, f"Permission denied: {str(perm_err)}"
             except genai.QuotaExceededError as quota_err:
                 return False, None, f"Quota exceeded: {str(quota_err)}"
+            
+            # Process response
+            if not hasattr(response, 'generated_images') or not response.generated_images:
+                return False, None, "No images were generated in the response"
+            
+            # First image from the response
+            if len(response.generated_images) > 0 and hasattr(response.generated_images[0], 'image'):
+                image_data = response.generated_images[0].image
+                
+                # Handle different image return types
+                if isinstance(image_data, Image.Image):
+                    # Already a PIL Image
+                    return True, image_data, "Image generated successfully"
+                elif isinstance(image_data, str) and image_data.startswith('data:image'):
+                    # Base64 data
+                    image_data = image_data.split(',')[1]
+                    image = Image.open(io.BytesIO(base64.b64decode(image_data)))
+                    return True, image, "Image generated successfully"
+                elif isinstance(image_data, bytes):
+                    # Raw image bytes
+                    image = Image.open(io.BytesIO(image_data))
+                    return True, image, "Image generated successfully"
+                elif hasattr(image_data, 'data') and isinstance(image_data.data, bytes):
+                    # Google API image type with binary data
+                    image = Image.open(io.BytesIO(image_data.data))
+                    return True, image, "Image generated successfully"
+                elif hasattr(image_data, 'data') and isinstance(image_data.data, str):
+                    # Google API image type with base64 data
+                    image = Image.open(io.BytesIO(base64.b64decode(image_data.data)))
+                    return True, image, "Image generated successfully"
+                elif hasattr(image_data, '__dict__'):
+                    # Google genai types.Image - handle this explicitly 
+                    try:
+                        # Try to access binary data via an attribute
+                        if hasattr(image_data, 'data'):
+                            image_bytes = image_data.data
+                        elif hasattr(image_data, 'image_bytes'):
+                            image_bytes = image_data.image_bytes
+                        elif hasattr(image_data, 'bytes'):
+                            image_bytes = image_data.bytes
+                        else:
+                            # Try to get data from the dict
+                            dict_data = image_data.__dict__
+                            for attr in dict_data:
+                                if isinstance(dict_data[attr], bytes):
+                                    image_bytes = dict_data[attr]
+                                    break
+                                elif isinstance(dict_data[attr], str) and dict_data[attr].startswith('data:image'):
+                                    data = dict_data[attr].split(',')[1]
+                                    image_bytes = base64.b64decode(data)
+                                    break
+                            else:
+                                return False, None, f"Couldn't extract image data from {type(image_data)}"
+                        
+                        # Convert to PIL Image
+                        image = Image.open(io.BytesIO(image_bytes))
+                        return True, image, "Image generated successfully"
+                    except Exception as e:
+                        return False, None, f"Error processing image data: {str(e)}"
+                else:
+                    return False, None, f"Unsupported image format returned: {type(image_data)}"
+            else:
+                return False, None, "Generated image data is invalid"
                 
         except Exception as e:
             return False, None, f"Error generating image: {str(e)}"
@@ -514,3 +567,37 @@ class GenAIWrapper:
             return True, f"Image saved to {path}"
         except Exception as e:
             return False, f"Error saving image: {e}"
+    
+    def generate_embedding(self, text: str, model: Optional[str] = None) -> Tuple[bool, Optional[List[float]], str]:
+        """Generate an embedding vector for the given text.
+        
+        Args:
+            text: The text to embed
+            model: Optional specific embedding model to use
+            
+        Returns:
+            Tuple of (success, embedding_vector, message)
+        """
+        try:
+            # Use specified model or default to first available embedding model
+            embedding_model = model
+            if not embedding_model and self.available_embedding_models:
+                embedding_model = self.available_embedding_models[0]
+                
+            if not embedding_model:
+                return False, None, "No embedding model available"
+                
+            # Generate embedding
+            response = self.client.models.embed_content(
+                model=embedding_model,
+                contents=text
+            )
+            
+            # Extract embedding vector
+            if hasattr(response, 'embedding'):
+                return True, response.embedding, "Embedding generated successfully"
+            else:
+                return False, None, "Failed to generate embedding"
+                
+        except Exception as e:
+            return False, None, f"Error generating embedding: {str(e)}"

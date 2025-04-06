@@ -352,7 +352,8 @@ class AIToolsPanel(ttk.Frame):
             prompt_frame, 
             textvariable=self.example_var,
             values=example_prompts,
-            state="readonly"
+            state="readonly",
+            width=40  # Increased width to show full prompts
         )
         example_combo.grid(row=2, column=1, sticky=tk.EW, padx=5, pady=5)
         example_combo.bind("<<ComboboxSelected>>", lambda e: self._set_example_prompt(self.example_var.get()))
