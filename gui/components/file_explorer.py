@@ -2,6 +2,7 @@ import os
 import tkinter as tk
 from tkinter import ttk
 from tkinter import simpledialog, messagebox
+from datetime import datetime
 
 class FileExplorer(ttk.Frame):
     """File explorer component for viewing and managing sandbox files."""
@@ -13,6 +14,8 @@ class FileExplorer(ttk.Frame):
         self.status_bar = status_bar
         self.selected_file = None
         self.on_file_select_callback = None
+        self.sort_by = "name"  # Default sort by name
+        self.sort_reverse = False  # Default ascending order
         
         # Configure the frame
         self.configure(padding=(5, 5))
@@ -40,6 +43,28 @@ class FileExplorer(ttk.Frame):
         self.refresh_btn = ttk.Button(toolbar, text="Refresh", width=6, command=self.refresh_files)
         self.refresh_btn.pack(side=tk.LEFT, padx=2)
         
+        # Sort options
+        sort_frame = ttk.Frame(self)
+        sort_frame.pack(fill=tk.X, expand=False, pady=(0, 5))
+        
+        ttk.Label(sort_frame, text="Sort by:").pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.sort_var = tk.StringVar(value="name")
+        sort_options = ttk.OptionMenu(
+            sort_frame, self.sort_var, "name", 
+            "name", "size", "modified",
+            command=self.on_sort_change
+        )
+        sort_options.pack(side=tk.LEFT, padx=5)
+        
+        self.order_var = tk.StringVar(value="ascending")
+        order_options = ttk.OptionMenu(
+            sort_frame, self.order_var, "ascending", 
+            "ascending", "descending",
+            command=self.on_order_change
+        )
+        order_options.pack(side=tk.LEFT, padx=5)
+        
         # Create file treeview
         self.tree_frame = ttk.Frame(self)
         self.tree_frame.pack(fill=tk.BOTH, expand=True)
@@ -55,9 +80,9 @@ class FileExplorer(ttk.Frame):
         self.tree.column("size", width=100, anchor=tk.E)
         self.tree.column("modified", width=150, anchor=tk.W)
         
-        self.tree.heading("#0", text="Filename")
-        self.tree.heading("size", text="Size")
-        self.tree.heading("modified", text="Modified")
+        self.tree.heading("#0", text="Filename", command=lambda: self.sort_files("name"))
+        self.tree.heading("size", text="Size", command=lambda: self.sort_files("size"))
+        self.tree.heading("modified", text="Modified", command=lambda: self.sort_files("modified"))
         
         # Add scrollbar
         scrollbar = ttk.Scrollbar(self.tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
@@ -97,29 +122,75 @@ class FileExplorer(ttk.Frame):
         if self.selected_file and self.on_file_select_callback:
             self.on_file_select_callback(self.selected_file, open_file=True)
     
+    def on_sort_change(self, value):
+        """Handle sort method change."""
+        self.sort_by = value
+        self.refresh_files()
+    
+    def on_order_change(self, value):
+        """Handle sort order change."""
+        self.sort_reverse = (value == "descending")
+        self.refresh_files()
+    
+    def sort_files(self, column):
+        """Sort files by clicking on column headers."""
+        # If clicking the same column, toggle the sort order
+        if self.sort_by == column:
+            self.sort_reverse = not self.sort_reverse
+            self.order_var.set("descending" if self.sort_reverse else "ascending")
+        else:
+            # Otherwise, sort by the new column in ascending order
+            self.sort_by = column
+            self.sort_reverse = False
+            self.sort_var.set(column)
+            self.order_var.set("ascending")
+        
+        self.refresh_files()
+    
     def refresh_files(self):
         """Refresh the file list."""
         # Clear the tree
         for item in self.tree.get_children():
             self.tree.delete(item)
         
-        # Get file list
+        # Get file list and file info
         files = self.sandbox.list_files()
+        file_info = []
         
-        # Display files in tree
         root_path = self.sandbox.sandbox_dir
-        for filename in sorted(files):
+        for filename in files:
             file_path = os.path.join(root_path, filename)
             file_stats = os.stat(file_path)
             
-            size = self._format_size(file_stats.st_size)
-            modified = self._format_time(file_stats.st_mtime)
+            size = file_stats.st_size
+            size_str = self._format_size(size)
+            modified = file_stats.st_mtime
+            modified_str = self._format_time(modified)
             
-            self.tree.insert("", "end", text=filename, values=(size, modified))
+            file_info.append({
+                'name': filename,
+                'size': size,
+                'size_str': size_str,
+                'modified': modified,
+                'modified_str': modified_str
+            })
+        
+        # Sort the files based on current settings
+        if self.sort_by == "name":
+            file_info.sort(key=lambda x: x['name'].lower(), reverse=self.sort_reverse)
+        elif self.sort_by == "size":
+            file_info.sort(key=lambda x: x['size'], reverse=self.sort_reverse)
+        elif self.sort_by == "modified":
+            file_info.sort(key=lambda x: x['modified'], reverse=self.sort_reverse)
+        
+        # Display files in tree
+        for file in file_info:
+            self.tree.insert("", "end", text=file['name'], values=(file['size_str'], file['modified_str']))
         
         # Update status
         if self.status_bar:
-            self.status_bar.set_status(f"{len(files)} files in sandbox")
+            sort_info = f"sorted by {self.sort_by} ({'desc' if self.sort_reverse else 'asc'})"
+            self.status_bar.set_status(f"{len(files)} files in sandbox, {sort_info}")
     
     def create_file(self):
         """Create a new file."""
@@ -227,6 +298,5 @@ class FileExplorer(ttk.Frame):
     
     def _format_time(self, timestamp):
         """Format timestamp in human-readable format."""
-        from datetime import datetime
         dt = datetime.fromtimestamp(timestamp)
         return dt.strftime("%Y-%m-%d %H:%M:%S") 

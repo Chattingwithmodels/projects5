@@ -2,6 +2,7 @@ import os
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox
+import json
 
 from gui.components.file_explorer import FileExplorer
 from gui.components.editor_panel import EditorPanel
@@ -19,6 +20,22 @@ class IDEApp:
         self.genai = genai_wrapper
         self.root = None
         self.file_explorer_visible = True
+        self.dark_mode = self._load_dark_mode_setting()
+        
+    def _load_dark_mode_setting(self):
+        """Load dark mode setting from settings file."""
+        settings_file = os.path.join(
+            os.path.expanduser("~"), 
+            ".sandbox_ide_settings.json"
+        )
+        try:
+            if os.path.exists(settings_file):
+                with open(settings_file, 'r') as f:
+                    settings = json.load(f)
+                    return settings.get("dark_mode", False)
+        except Exception as e:
+            print(f"Error loading settings: {e}")
+        return False
         
     def run(self):
         """Start the application."""
@@ -50,11 +67,51 @@ class IDEApp:
         except tk.TclError:
             pass
         
-        # Configure colors for better contrast
-        style.configure("TFrame", background="#f5f5f5")
-        style.configure("TButton", padding=5)
-        style.configure("TNotebook", padding=2)
-        style.configure("TLabel", background="#f5f5f5")
+        if self.dark_mode:
+            # Dark mode colors
+            bg_color = "#222222"
+            fg_color = "#ffffff"
+            select_bg = "#505050"
+            text_bg = "#2d2d2d"
+            text_fg = "#ffffff"
+            button_bg = "#444444"
+            highlight_bg = "#3a3a3a"
+            
+            # Configure dark theme
+            style.configure(".", background=bg_color, foreground=fg_color,
+                           fieldbackground=bg_color, troughcolor=bg_color)
+            style.configure("TFrame", background=bg_color)
+            style.configure("TButton", background=button_bg, foreground=fg_color)
+            style.configure("TNotebook", background=bg_color, borderwidth=0)
+            style.configure("TNotebook.Tab", background=button_bg, foreground=fg_color, padding=(10, 2))
+            style.map("TNotebook.Tab", background=[("selected", highlight_bg)], 
+                     foreground=[("selected", fg_color)])
+            style.configure("TLabel", background=bg_color, foreground=fg_color)
+            style.configure("TCheckbutton", background=bg_color, foreground=fg_color)
+            style.configure("TRadiobutton", background=bg_color, foreground=fg_color)
+            style.configure("TEntry", fieldbackground=text_bg, foreground=text_fg)
+            style.configure("TCombobox", fieldbackground=text_bg, foreground=text_fg)
+            style.configure("TSpinbox", fieldbackground=text_bg, foreground=text_fg)
+            style.configure("TScale", troughcolor=button_bg)
+            style.map("Treeview", background=[("selected", select_bg)])
+            
+            # Configure Tkinter widgets
+            self.root.config(background=bg_color)
+            self.root.option_add("*Text.Background", text_bg)
+            self.root.option_add("*Text.Foreground", text_fg)
+            self.root.option_add("*Text.selectBackground", select_bg)
+            self.root.option_add("*Text.highlightBackground", highlight_bg)
+            self.root.option_add("*ScrolledText.Background", text_bg)
+            self.root.option_add("*ScrolledText.Foreground", text_fg)
+            
+        else:
+            # Light mode colors
+            bg_color = "#f5f5f5"
+            # Configure light theme
+            style.configure("TFrame", background=bg_color)
+            style.configure("TButton", padding=5)
+            style.configure("TNotebook", padding=2)
+            style.configure("TLabel", background=bg_color)
         
         # Set window icon (if available)
         try:
@@ -122,7 +179,7 @@ class IDEApp:
         self.editor_pane.add(self.editor, weight=2)
         
         # Create AI tools panel
-        self.ai_tools = AIToolsPanel(self.editor_pane, self.genai, self.editor, self.status_bar)
+        self.ai_tools = AIToolsPanel(self.editor_pane, self.genai, self.editor, self.status_bar, self.sandbox)
         self.editor_pane.add(self.ai_tools, weight=1)
         
         # Create multi-file generator tab

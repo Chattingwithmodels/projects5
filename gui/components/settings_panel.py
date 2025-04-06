@@ -24,7 +24,8 @@ class SettingsPanel(ttk.Frame):
             "temperature": 0.7,
             "max_output_tokens": 8192,
             "top_p": 0.95,
-            "top_k": 40
+            "top_k": 40,
+            "dark_mode": False
         }
         
         # Available models (could be expanded based on the API's capabilities)
@@ -44,6 +45,7 @@ class SettingsPanel(ttk.Frame):
         self.max_tokens_var = tk.IntVar(value=self.settings["max_output_tokens"])
         self.top_p_var = tk.DoubleVar(value=self.settings["top_p"])
         self.top_k_var = tk.IntVar(value=self.settings["top_k"])
+        self.dark_mode_var = tk.BooleanVar(value=self.settings.get("dark_mode", False))
         
         # Load existing settings
         self.load_settings()
@@ -55,6 +57,7 @@ class SettingsPanel(ttk.Frame):
         self.max_tokens_var.set(self.settings["max_output_tokens"])
         self.top_p_var.set(self.settings["top_p"])
         self.top_k_var.set(self.settings["top_k"])
+        self.dark_mode_var.set(self.settings.get("dark_mode", False))
         
         # Update the genai wrapper with current settings
         self.apply_settings_to_genai()
@@ -117,6 +120,15 @@ class SettingsPanel(ttk.Frame):
         self.temp_label = ttk.Label(temp_frame, text=f"{self.settings['temperature']:.1f}")
         self.temp_label.pack(side=tk.LEFT, padx=5)
         
+        # Temperature description
+        temp_desc = ttk.Label(
+            self.model_frame, 
+            text="Controls randomness: lower values are more deterministic, higher values more creative.",
+            wraplength=400,
+            font=("Default", 8)
+        )
+        temp_desc.grid(row=2, column=2, sticky=tk.W, padx=5, pady=5)
+        
         # Max output tokens
         ttk.Label(self.model_frame, text="Max Output Tokens:").grid(row=3, column=0, sticky=tk.W, pady=5)
         self.max_tokens_entry = ttk.Spinbox(
@@ -128,6 +140,15 @@ class SettingsPanel(ttk.Frame):
             width=10
         )
         self.max_tokens_entry.grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Max tokens description
+        tokens_desc = ttk.Label(
+            self.model_frame, 
+            text="Maximum number of tokens to generate in the response.",
+            wraplength=400,
+            font=("Default", 8)
+        )
+        tokens_desc.grid(row=3, column=2, sticky=tk.W, padx=5, pady=5)
         
         # Top P
         ttk.Label(self.model_frame, text="Top P:").grid(row=4, column=0, sticky=tk.W, pady=5)
@@ -148,6 +169,15 @@ class SettingsPanel(ttk.Frame):
         self.top_p_label = ttk.Label(top_p_frame, text=f"{self.settings['top_p']:.2f}")
         self.top_p_label.pack(side=tk.LEFT, padx=5)
         
+        # Top P description
+        top_p_desc = ttk.Label(
+            self.model_frame, 
+            text="Controls diversity via nucleus sampling: 0.5 means half of all likelihood-weighted options are considered.",
+            wraplength=400,
+            font=("Default", 8)
+        )
+        top_p_desc.grid(row=4, column=2, sticky=tk.W, padx=5, pady=5)
+        
         # Top K
         ttk.Label(self.model_frame, text="Top K:").grid(row=5, column=0, sticky=tk.W, pady=5)
         self.top_k_entry = ttk.Spinbox(
@@ -159,6 +189,15 @@ class SettingsPanel(ttk.Frame):
             width=10
         )
         self.top_k_entry.grid(row=5, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Top K description
+        top_k_desc = ttk.Label(
+            self.model_frame, 
+            text="The number of highest probability vocabulary tokens to keep for top-k filtering.",
+            wraplength=400,
+            font=("Default", 8)
+        )
+        top_k_desc.grid(row=5, column=2, sticky=tk.W, padx=5, pady=5)
         
         # System Prompt tab
         self.prompt_frame = ttk.Frame(self.notebook, padding=10)
@@ -193,6 +232,32 @@ class SettingsPanel(ttk.Frame):
         self.system_prompt.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         prompt_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
+        # Create Appearance tab
+        self.appearance_frame = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(self.appearance_frame, text="Appearance")
+        
+        # Dark mode toggle
+        ttk.Label(
+            self.appearance_frame, 
+            text="Theme:",
+            font=("Default", 10, "bold")
+        ).pack(anchor=tk.W, pady=(0, 10))
+        
+        self.dark_mode_check = ttk.Checkbutton(
+            self.appearance_frame,
+            text="Dark Mode",
+            variable=self.dark_mode_var,
+            command=self.on_dark_mode_toggle
+        )
+        self.dark_mode_check.pack(anchor=tk.W, pady=5)
+        
+        ttk.Label(
+            self.appearance_frame, 
+            text="Note: Theme changes will apply after restarting the application.",
+            wraplength=400,
+            font=("Default", 8)
+        ).pack(anchor=tk.W, pady=(5, 0))
+        
         # Apply button
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill=tk.X, pady=5)
@@ -221,7 +286,14 @@ class SettingsPanel(ttk.Frame):
         """Handle model selection change."""
         selected_model = self.model_var.get()
         # Update UI or settings based on model selection
-        
+    
+    def on_dark_mode_toggle(self):
+        """Handle dark mode toggle."""
+        dark_mode = self.dark_mode_var.get()
+        self.settings["dark_mode"] = dark_mode
+        if self.status_bar:
+            self.status_bar.show_message("Theme will change after restart")
+    
     def apply_settings(self):
         """Apply the current settings to the genai wrapper."""
         # Collect current settings
@@ -232,6 +304,7 @@ class SettingsPanel(ttk.Frame):
         self.settings["top_p"] = self.top_p_var.get()
         self.settings["top_k"] = self.top_k_var.get()
         self.settings["system_prompt"] = self.system_prompt.get("1.0", tk.END).strip()
+        self.settings["dark_mode"] = self.dark_mode_var.get()
         
         # Apply to genai wrapper
         self.apply_settings_to_genai()
@@ -264,7 +337,8 @@ class SettingsPanel(ttk.Frame):
             "temperature": 0.7,
             "max_output_tokens": 8192,
             "top_p": 0.95,
-            "top_k": 40
+            "top_k": 40,
+            "dark_mode": False
         }
         
         # Update UI
@@ -276,6 +350,7 @@ class SettingsPanel(ttk.Frame):
         self.top_p_var.set(default_settings["top_p"])
         self._update_top_p_label(default_settings["top_p"])
         self.top_k_var.set(default_settings["top_k"])
+        self.dark_mode_var.set(default_settings["dark_mode"])
         
         self.system_prompt.delete("1.0", tk.END)
         self.system_prompt.insert("1.0", default_settings["system_prompt"])

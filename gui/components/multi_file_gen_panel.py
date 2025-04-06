@@ -12,6 +12,7 @@ class MultiFileGenPanel(ttk.Frame):
         self.sandbox = sandbox_manager
         self.status_bar = status_bar
         self.generated_files = {}
+        self.unsaved_files = set()  # Track which files haven't been saved yet
         
         # Configure the frame
         self.configure(padding=(10, 5))
@@ -185,6 +186,11 @@ class MultiFileGenPanel(ttk.Frame):
             
             # Store generated files
             self.generated_files = files_dict
+            self.unsaved_files = set(files_dict.keys())
+            
+            # Remove 'error' key from unsaved files if it exists
+            if 'error' in self.unsaved_files:
+                self.unsaved_files.remove('error')
             
             # Populate file list
             for filename in sorted(files_dict.keys()):
@@ -192,8 +198,9 @@ class MultiFileGenPanel(ttk.Frame):
                     continue
                 self.file_list.insert("", "end", text=filename, values=("Unsaved",))
             
-            # Enable Save All button
-            self.save_all_btn.config(state=tk.NORMAL)
+            # Enable Save All button if there are files to save
+            if self.unsaved_files:
+                self.save_all_btn.config(state=tk.NORMAL)
             
             # Display success message
             file_count = len(files_dict)
@@ -257,12 +264,23 @@ class MultiFileGenPanel(ttk.Frame):
             # Update status in tree view
             self.file_list.item(selection[0], values=("Saved",))
             
-            # Disable save button
+            # Remove from unsaved files
+            if filename in self.unsaved_files:
+                self.unsaved_files.remove(filename)
+            
+            # Disable save button for this file
             self.save_file_btn.config(state=tk.DISABLED)
+            
+            # Disable save all button if all files are saved
+            if not self.unsaved_files:
+                self.save_all_btn.config(state=tk.DISABLED)
             
             # Show success message
             if self.status_bar:
                 self.status_bar.show_message(f"Saved file: {filename}")
+                
+            # Refresh file list in parent application if possible
+            self.event_generate("<<FilesGenerated>>")
         else:
             # Show error
             if self.status_bar:
@@ -275,14 +293,24 @@ class MultiFileGenPanel(ttk.Frame):
         saved_count = 0
         error_count = 0
         
-        for filename, content in self.generated_files.items():
+        # Make a copy of unsaved_files to iterate over while modifying the original
+        files_to_save = list(self.unsaved_files)
+        
+        for filename in files_to_save:
             if filename == "error":  # Skip error messages
+                continue
+                
+            content = self.generated_files.get(filename, "")
+            if not content:
                 continue
                 
             success, message = self.sandbox.write_file(filename, content)
             
             if success:
                 saved_count += 1
+                
+                # Remove from unsaved files
+                self.unsaved_files.remove(filename)
                 
                 # Find tree item and update status
                 for item_id in self.file_list.get_children():
@@ -295,9 +323,10 @@ class MultiFileGenPanel(ttk.Frame):
         
         # Update UI status
         if saved_count > 0:
-            # Disable save buttons
-            self.save_all_btn.config(state=tk.DISABLED)
-            self.save_file_btn.config(state=tk.DISABLED)
+            # Disable save buttons if all files are saved
+            if not self.unsaved_files:
+                self.save_all_btn.config(state=tk.DISABLED)
+                self.save_file_btn.config(state=tk.DISABLED)
             
             # Show success message
             if self.status_bar:
@@ -308,7 +337,7 @@ class MultiFileGenPanel(ttk.Frame):
                 else:
                     self.status_bar.show_message(f"Saved all {saved_count} file(s)")
             
-            # Refresh file list in parent application if possible
+            # Refresh file list in parent application
             self.event_generate("<<FilesGenerated>>")
     
     def clear_results(self):
@@ -324,6 +353,7 @@ class MultiFileGenPanel(ttk.Frame):
         
         # Clear generated files
         self.generated_files = {}
+        self.unsaved_files = set()
         
         # Disable buttons
         self.save_file_btn.config(state=tk.DISABLED)

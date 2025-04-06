@@ -2,16 +2,18 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import scrolledtext
 import threading
+import os
 
 class AIToolsPanel(ttk.Frame):
     """AI tools panel for interacting with GenAI."""
     
-    def __init__(self, parent, genai_wrapper, editor_panel, status_bar=None):
+    def __init__(self, parent, genai_wrapper, editor_panel, status_bar=None, sandbox_manager=None):
         super().__init__(parent)
         self.parent = parent
         self.genai = genai_wrapper
         self.editor = editor_panel
         self.status_bar = status_bar
+        self.sandbox = sandbox_manager
         
         # Configure the frame
         self.configure(padding=(5, 5))
@@ -26,6 +28,7 @@ class AIToolsPanel(ttk.Frame):
         self.create_refactor_tab()
         self.create_improve_tab()
         self.create_docs_tab()
+        self.create_multi_file_tab()
     
     def create_ask_tab(self):
         """Create the 'Ask AI' tab."""
@@ -62,6 +65,15 @@ class AIToolsPanel(ttk.Frame):
             state=tk.DISABLED
         )
         self.ask_output.pack(fill=tk.BOTH, expand=True)
+        
+        # Save to markdown button - initially disabled
+        self.save_ask_btn = ttk.Button(
+            ask_frame, 
+            text="Save to Markdown", 
+            command=self.save_ask_to_markdown,
+            state=tk.DISABLED
+        )
+        self.save_ask_btn.pack(anchor=tk.E, pady=(5, 0))
     
     def create_explain_tab(self):
         """Create the 'Explain Code' tab."""
@@ -93,6 +105,15 @@ class AIToolsPanel(ttk.Frame):
             state=tk.DISABLED
         )
         self.explain_output.pack(fill=tk.BOTH, expand=True)
+        
+        # Save to markdown button - initially disabled
+        self.save_explain_btn = ttk.Button(
+            explain_frame, 
+            text="Save to Markdown", 
+            command=self.save_explain_to_markdown,
+            state=tk.DISABLED
+        )
+        self.save_explain_btn.pack(anchor=tk.E, pady=(5, 0))
     
     def create_refactor_tab(self):
         """Create the 'Refactor Code' tab."""
@@ -169,6 +190,15 @@ class AIToolsPanel(ttk.Frame):
             state=tk.DISABLED
         )
         self.improve_output.pack(fill=tk.BOTH, expand=True)
+        
+        # Apply button - initially disabled
+        self.apply_improve_btn = ttk.Button(
+            improve_frame, 
+            text="Apply Improvements", 
+            command=self.apply_improvements,
+            state=tk.DISABLED
+        )
+        self.apply_improve_btn.pack(anchor=tk.E, pady=(5, 0))
     
     def create_docs_tab(self):
         """Create the 'Generate Docs' tab."""
@@ -209,6 +239,296 @@ class AIToolsPanel(ttk.Frame):
             state=tk.DISABLED
         )
         self.apply_docs_btn.pack(anchor=tk.E, pady=(5, 0))
+    
+    def create_multi_file_tab(self):
+        """Create the 'Multi-File Analysis' tab."""
+        multi_file_frame = ttk.Frame(self.notebook, padding=(10, 10))
+        self.notebook.add(multi_file_frame, text="Multi-File Analysis")
+        
+        # Instructions
+        ttk.Label(
+            multi_file_frame, 
+            text="Analyze multiple files with a single prompt",
+            font=("Default", 10, "bold")
+        ).pack(anchor=tk.W, pady=(0, 5))
+        
+        # File selection frame
+        files_frame = ttk.LabelFrame(multi_file_frame, text="Files to Analyze")
+        files_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 10))
+        
+        # Available files list
+        files_container = ttk.Frame(files_frame)
+        files_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        available_files_frame = ttk.Frame(files_container)
+        available_files_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        ttk.Label(available_files_frame, text="Available Files:").pack(anchor=tk.W)
+        
+        self.available_files_list = tk.Listbox(
+            available_files_frame, 
+            height=5, 
+            selectmode=tk.EXTENDED
+        )
+        available_scrollbar = ttk.Scrollbar(
+            available_files_frame, 
+            orient=tk.VERTICAL, 
+            command=self.available_files_list.yview
+        )
+        self.available_files_list.configure(yscrollcommand=available_scrollbar.set)
+        
+        self.available_files_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        available_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Buttons frame
+        btn_frame = ttk.Frame(files_container)
+        btn_frame.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(
+            btn_frame, 
+            text=">", 
+            command=self._add_selected_files
+        ).pack(pady=5)
+        
+        ttk.Button(
+            btn_frame, 
+            text="<", 
+            command=self._remove_selected_files
+        ).pack(pady=5)
+        
+        # Selected files list
+        selected_files_frame = ttk.Frame(files_container)
+        selected_files_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        
+        ttk.Label(selected_files_frame, text="Selected Files:").pack(anchor=tk.W)
+        
+        self.selected_files_list = tk.Listbox(
+            selected_files_frame, 
+            height=5, 
+            selectmode=tk.EXTENDED
+        )
+        selected_scrollbar = ttk.Scrollbar(
+            selected_files_frame, 
+            orient=tk.VERTICAL, 
+            command=self.selected_files_list.yview
+        )
+        self.selected_files_list.configure(yscrollcommand=selected_scrollbar.set)
+        
+        self.selected_files_list.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        selected_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Refresh button
+        refresh_btn = ttk.Button(
+            files_frame, 
+            text="Refresh File List", 
+            command=self._refresh_file_lists
+        )
+        refresh_btn.pack(anchor=tk.E, padx=5, pady=5)
+        
+        # Prompt input
+        ttk.Label(multi_file_frame, text="Prompt:").pack(anchor=tk.W, pady=(5, 0))
+        self.multi_file_input = tk.Text(multi_file_frame, height=3, width=40, wrap=tk.WORD)
+        self.multi_file_input.pack(fill=tk.X, expand=False, pady=(0, 10))
+        
+        # Example prompts
+        examples_frame = ttk.LabelFrame(multi_file_frame, text="Example Prompts")
+        examples_frame.pack(fill=tk.X, expand=False, pady=(0, 10))
+        
+        examples = [
+            "Generate a README.md for this project",
+            "Find potential bugs across these files",
+            "How do these files interact with each other?",
+            "Summarize what each file does"
+        ]
+        
+        for example in examples:
+            example_btn = ttk.Button(
+                examples_frame, 
+                text=example,
+                command=lambda e=example: self._set_example_prompt(e)
+            )
+            example_btn.pack(anchor=tk.W, padx=5, pady=2)
+        
+        # Submit button
+        analyze_btn = ttk.Button(
+            multi_file_frame, 
+            text="Analyze Files", 
+            command=self.analyze_files
+        )
+        analyze_btn.pack(anchor=tk.W, pady=(0, 10))
+        
+        # Response output
+        ttk.Label(multi_file_frame, text="Analysis:").pack(anchor=tk.W, pady=(5, 0))
+        self.multi_file_output = scrolledtext.ScrolledText(
+            multi_file_frame, 
+            height=12, 
+            width=40, 
+            wrap=tk.WORD, 
+            state=tk.DISABLED
+        )
+        self.multi_file_output.pack(fill=tk.BOTH, expand=True)
+        
+        # Save to markdown button - initially disabled
+        self.save_analysis_btn = ttk.Button(
+            multi_file_frame, 
+            text="Save to Markdown", 
+            command=self.save_analysis_to_markdown,
+            state=tk.DISABLED
+        )
+        self.save_analysis_btn.pack(anchor=tk.E, pady=(5, 0))
+        
+        # Initialize file lists
+        self._refresh_file_lists()
+    
+    def _refresh_file_lists(self):
+        """Refresh the file lists in the multi-file tab."""
+        if not self.sandbox:
+            return
+            
+        # Clear lists
+        self.available_files_list.delete(0, tk.END)
+        
+        # Add files from sandbox
+        files = sorted(self.sandbox.list_files())
+        for file in files:
+            self.available_files_list.insert(tk.END, file)
+    
+    def _add_selected_files(self):
+        """Add selected files to the selected files list."""
+        selected_indices = self.available_files_list.curselection()
+        for i in selected_indices:
+            file = self.available_files_list.get(i)
+            # Only add if not already in selected list
+            existing_files = self.selected_files_list.get(0, tk.END)
+            if file not in existing_files:
+                self.selected_files_list.insert(tk.END, file)
+    
+    def _remove_selected_files(self):
+        """Remove selected files from the selected files list."""
+        selected_indices = self.selected_files_list.curselection()
+        # Delete in reverse order to avoid index shifting
+        for i in sorted(selected_indices, reverse=True):
+            self.selected_files_list.delete(i)
+    
+    def _set_example_prompt(self, example):
+        """Set an example prompt in the multi-file input field."""
+        self.multi_file_input.delete("1.0", tk.END)
+        self.multi_file_input.insert("1.0", example)
+    
+    def analyze_files(self):
+        """Analyze multiple files with the given prompt."""
+        selected_files = self.selected_files_list.get(0, tk.END)
+        if not selected_files:
+            if self.status_bar:
+                self.status_bar.show_error("Please select at least one file to analyze")
+            return
+        
+        prompt = self.multi_file_input.get("1.0", tk.END).strip()
+        if not prompt:
+            if self.status_bar:
+                self.status_bar.show_error("Please enter a prompt")
+            return
+        
+        # Get contents of all selected files
+        file_contents = {}
+        for filename in selected_files:
+            success, content = self.sandbox.read_file(filename)
+            if success:
+                file_contents[filename] = content
+            else:
+                if self.status_bar:
+                    self.status_bar.show_error(f"Failed to read {filename}")
+                return
+        
+        # Start progress indicator
+        if self.status_bar:
+            self.status_bar.start_progress("Analyzing files...")
+        
+        def get_analysis():
+            try:
+                # Format the prompt with file contents
+                context = "I'll analyze the following files:\n\n"
+                for filename, content in file_contents.items():
+                    context += f"## File: {filename}\n```\n{content}\n```\n\n"
+                
+                context += f"Based on these files, please: {prompt}"
+                
+                # Call the AI
+                success, analysis = self.genai.ask_question(context, "")
+                
+                # Update UI in main thread
+                def update_ui():
+                    if self.status_bar:
+                        self.status_bar.stop_progress()
+                        
+                    if success:
+                        self.set_text_widget(self.multi_file_output, analysis)
+                        self.save_analysis_btn.config(state=tk.NORMAL)
+                        if self.status_bar:
+                            self.status_bar.show_message("Analysis complete")
+                    else:
+                        self.set_text_widget(self.multi_file_output, f"Error: {analysis}")
+                        self.save_analysis_btn.config(state=tk.DISABLED)
+                        if self.status_bar:
+                            self.status_bar.show_error("Failed to analyze files")
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                def show_error():
+                    if self.status_bar:
+                        self.status_bar.stop_progress()
+                        self.status_bar.show_error(f"Error analyzing files: {str(e)}")
+                    self.set_text_widget(self.multi_file_output, f"Error analyzing files: {str(e)}")
+                    self.save_analysis_btn.config(state=tk.DISABLED)
+                    
+                self.after(0, show_error)
+        
+        # Run in thread to avoid UI freeze
+        thread = threading.Thread(target=get_analysis)
+        thread.daemon = True
+        thread.start()
+    
+    def save_analysis_to_markdown(self):
+        """Save the multi-file analysis to a markdown file."""
+        content = self.multi_file_output.get("1.0", tk.END).strip()
+        if not content:
+            return
+        
+        # Create a suitable filename
+        filename_base = "analysis"
+        
+        # Ask for a filename
+        from tkinter import simpledialog
+        filename = simpledialog.askstring(
+            "Save to Markdown", 
+            "Enter markdown filename:",
+            initialvalue=f"{filename_base}.md"
+        )
+        
+        if not filename:
+            return
+            
+        # Add .md extension if not present
+        if not filename.endswith('.md'):
+            filename += '.md'
+            
+        # Format the content
+        prompt = self.multi_file_input.get("1.0", tk.END).strip()
+        files = ", ".join(self.selected_files_list.get(0, tk.END))
+        markdown_content = f"# Multi-File Analysis\n\n## Files Analyzed\n\n{files}\n\n## Prompt\n\n{prompt}\n\n## Analysis\n\n{content}"
+        
+        # Save the file
+        success, message = self.sandbox.write_file(filename, markdown_content)
+        
+        if success:
+            if self.status_bar:
+                self.status_bar.show_message(f"Saved analysis to {filename}")
+            # Trigger an event to refresh the file explorer
+            self.event_generate("<<FilesGenerated>>")
+        else:
+            if self.status_bar:
+                self.status_bar.show_error(f"Failed to save: {message}")
     
     def set_text_widget(self, widget, text):
         """Set text in a read-only text widget."""
@@ -260,8 +580,10 @@ class AIToolsPanel(ttk.Frame):
             def update_ui():
                 if success:
                     self.set_text_widget(self.ask_output, answer)
+                    self.save_ask_btn.config(state=tk.NORMAL)
                 else:
                     self.set_text_widget(self.ask_output, f"Error: {answer}")
+                    self.save_ask_btn.config(state=tk.DISABLED)
                     if self.status_bar:
                         self.status_bar.show_error("Failed to get answer from AI.")
             
@@ -282,8 +604,10 @@ class AIToolsPanel(ttk.Frame):
             def update_ui():
                 if success:
                     self.set_text_widget(self.explain_output, explanation)
+                    self.save_explain_btn.config(state=tk.NORMAL)
                 else:
                     self.set_text_widget(self.explain_output, f"Error: {explanation}")
+                    self.save_explain_btn.config(state=tk.DISABLED)
                     if self.status_bar:
                         self.status_bar.show_error("Failed to get explanation from AI.")
             
@@ -344,14 +668,26 @@ class AIToolsPanel(ttk.Frame):
             def update_ui():
                 if success:
                     self.set_text_widget(self.improve_output, suggestions)
+                    self.apply_improve_btn.config(state=tk.NORMAL)
+                    if self.status_bar:
+                        self.status_bar.show_message("Improvements suggested. You can apply them.")
                 else:
                     self.set_text_widget(self.improve_output, f"Error: {suggestions}")
+                    self.apply_improve_btn.config(state=tk.DISABLED)
                     if self.status_bar:
                         self.status_bar.show_error("Failed to get improvement suggestions.")
             
             self.after(0, update_ui)
         
         self.run_in_thread(get_suggestions)
+    
+    def apply_improvements(self):
+        """Apply the improved code to the editor."""
+        improved_code = self.improve_output.get(1.0, tk.END)
+        self.editor.set_content(improved_code)
+        self.apply_improve_btn.config(state=tk.DISABLED)
+        if self.status_bar:
+            self.status_bar.show_message("Applied improvements. Don't forget to save.")
     
     def generate_docs(self):
         """Generate documentation for the current file."""
@@ -385,4 +721,88 @@ class AIToolsPanel(ttk.Frame):
         self.editor.set_content(docs)
         self.apply_docs_btn.config(state=tk.DISABLED)
         if self.status_bar:
-            self.status_bar.show_message("Applied documentation. Don't forget to save.") 
+            self.status_bar.show_message("Applied documentation. Don't forget to save.")
+    
+    def save_ask_to_markdown(self):
+        """Save the ask ai response to a markdown file."""
+        content = self.ask_output.get(1.0, tk.END).strip()
+        if not content:
+            return
+        
+        # Get the current file name without extension to use as a base
+        filename_base = "question_answer"
+        if self.editor.current_file:
+            filename_base = os.path.splitext(os.path.basename(self.editor.current_file))[0] + "_qa"
+        
+        # Ask for a filename
+        from tkinter import simpledialog
+        filename = simpledialog.askstring(
+            "Save to Markdown", 
+            "Enter markdown filename:",
+            initialvalue=f"{filename_base}.md"
+        )
+        
+        if not filename:
+            return
+            
+        # Add .md extension if not present
+        if not filename.endswith('.md'):
+            filename += '.md'
+            
+        # Format the content
+        question = self.question_input.get(1.0, tk.END).strip()
+        markdown_content = f"# Question and Answer\n\n## Question\n\n{question}\n\n## Answer\n\n{content}"
+        
+        # Save the file
+        success, message = self.sandbox.write_file(filename, markdown_content)
+        
+        if success:
+            if self.status_bar:
+                self.status_bar.show_message(f"Saved Q&A to {filename}")
+            # Trigger an event to refresh the file explorer
+            self.event_generate("<<FilesGenerated>>")
+        else:
+            if self.status_bar:
+                self.status_bar.show_error(f"Failed to save: {message}")
+    
+    def save_explain_to_markdown(self):
+        """Save the code explanation to a markdown file."""
+        content = self.explain_output.get(1.0, tk.END).strip()
+        if not content:
+            return
+        
+        # Get the current file name without extension to use as a base
+        filename_base = "code_explanation"
+        if self.editor.current_file:
+            filename_base = os.path.splitext(os.path.basename(self.editor.current_file))[0] + "_explanation"
+        
+        # Ask for a filename
+        from tkinter import simpledialog
+        filename = simpledialog.askstring(
+            "Save to Markdown", 
+            "Enter markdown filename:",
+            initialvalue=f"{filename_base}.md"
+        )
+        
+        if not filename:
+            return
+            
+        # Add .md extension if not present
+        if not filename.endswith('.md'):
+            filename += '.md'
+            
+        # Format the content
+        file_name = self.editor.current_file or "unknown file"
+        markdown_content = f"# Code Explanation\n\n## File: {os.path.basename(file_name)}\n\n{content}"
+        
+        # Save the file
+        success, message = self.sandbox.write_file(filename, markdown_content)
+        
+        if success:
+            if self.status_bar:
+                self.status_bar.show_message(f"Saved explanation to {filename}")
+            # Trigger an event to refresh the file explorer
+            self.event_generate("<<FilesGenerated>>")
+        else:
+            if self.status_bar:
+                self.status_bar.show_error(f"Failed to save: {message}") 
