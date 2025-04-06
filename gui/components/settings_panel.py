@@ -28,15 +28,8 @@ class SettingsPanel(ttk.Frame):
             "dark_mode": False
         }
         
-        # Available models (could be expanded based on the API's capabilities)
-        self.available_models = [
-            "gemini-2.0-flash-001",
-            "gemini-2.0-pro-001",
-            "gemini-1.5-flash-001",
-            "gemini-1.5-pro-001",
-            "gemini-1.0-pro-001",
-            "imagen-3.0-generate-002"  # Image generation model
-        ]
+        # Fetch available models from the GenAI wrapper
+        self.available_models = self._get_available_models()
         
         # Initialize model variables
         self.model_var = tk.StringVar(value=self.settings["model"])
@@ -68,6 +61,27 @@ class SettingsPanel(ttk.Frame):
         # Create layout
         self._create_layout()
     
+    def _get_available_models(self):
+        """Get available models from the GenAI wrapper."""
+        text_models = self.genai.get_available_text_models()
+        image_models = self.genai.get_available_image_models()
+        
+        # If no models were returned, use these defaults
+        if not text_models:
+            text_models = [
+                "gemini-2.0-flash-001",
+                "gemini-2.0-pro-001",
+                "gemini-1.5-flash-001",
+                "gemini-1.5-pro-001",
+                "gemini-1.0-pro-001"
+            ]
+            
+        if not image_models:
+            image_models = ["imagen-3.0-generate-002"]
+            
+        # Combine all models into one list
+        return text_models + image_models
+    
     def _create_layout(self):
         """Create the settings panel layout."""
         # Main container with tabs
@@ -78,28 +92,40 @@ class SettingsPanel(ttk.Frame):
         self.model_frame = ttk.Frame(self.notebook, padding=10)
         self.notebook.add(self.model_frame, text="Model Settings")
         
+        # Get available text and image models
+        text_models = self.genai.get_available_text_models()
+        image_models = self.genai.get_available_image_models()
+        
         # Model selection
         ttk.Label(self.model_frame, text="Text Model:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.model_combo = ttk.Combobox(
             self.model_frame, 
             textvariable=self.model_var,
-            values=[m for m in self.available_models if not m.startswith("imagen")],
+            values=text_models,
             state="readonly",
             width=30
         )
         self.model_combo.grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
         self.model_combo.bind("<<ComboboxSelected>>", self.on_model_change)
         
+        # Fix combobox style for dark mode
+        if self.settings.get("dark_mode", False):
+            self.model_combo.config(foreground="black")
+        
         # Image generation model
         ttk.Label(self.model_frame, text="Image Model:").grid(row=1, column=0, sticky=tk.W, pady=5)
         self.image_model_combo = ttk.Combobox(
             self.model_frame, 
             textvariable=self.image_model_var,
-            values=[m for m in self.available_models if m.startswith("imagen")],
+            values=image_models,
             state="readonly",
             width=30
         )
         self.image_model_combo.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Fix combobox style for dark mode
+        if self.settings.get("dark_mode", False):
+            self.image_model_combo.config(foreground="black")
         
         # Temperature
         ttk.Label(self.model_frame, text="Temperature:").grid(row=2, column=0, sticky=tk.W, pady=5)

@@ -3,6 +3,9 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import simpledialog, messagebox
 from datetime import datetime
+import json
+import subprocess
+import platform
 
 class FileExplorer(ttk.Frame):
     """File explorer component for viewing and managing sandbox files."""
@@ -17,6 +20,9 @@ class FileExplorer(ttk.Frame):
         self.sort_by = "name"  # Default sort by name
         self.sort_reverse = False  # Default ascending order
         
+        # Detect if dark mode is enabled
+        self.dark_mode = self._check_dark_mode()
+        
         # Configure the frame
         self.configure(padding=(5, 5))
         
@@ -29,6 +35,10 @@ class FileExplorer(ttk.Frame):
         # Create toolbar
         toolbar = ttk.Frame(header_frame)
         toolbar.pack(side=tk.RIGHT)
+        
+        # Terminal button
+        self.terminal_btn = ttk.Button(toolbar, text="Terminal", width=8, command=self.open_terminal)
+        self.terminal_btn.pack(side=tk.LEFT, padx=2)
         
         # File operation buttons
         self.new_btn = ttk.Button(toolbar, text="New", width=6, command=self.create_file)
@@ -84,6 +94,11 @@ class FileExplorer(ttk.Frame):
         self.tree.heading("size", text="Size", command=lambda: self.sort_files("size"))
         self.tree.heading("modified", text="Modified", command=lambda: self.sort_files("modified"))
         
+        # Fix treeview colors for dark mode
+        if self.dark_mode:
+            # Define styles
+            self._configure_treeview_colors()
+        
         # Add scrollbar
         scrollbar = ttk.Scrollbar(self.tree_frame, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
@@ -98,6 +113,41 @@ class FileExplorer(ttk.Frame):
         
         # Initialize
         self.refresh_files()
+    
+    def _check_dark_mode(self):
+        """Check if dark mode is enabled in settings."""
+        settings_file = os.path.join(
+            os.path.expanduser("~"), 
+            ".sandbox_ide_settings.json"
+        )
+        try:
+            if os.path.exists(settings_file):
+                with open(settings_file, 'r') as f:
+                    settings = json.load(f)
+                    return settings.get("dark_mode", False)
+        except Exception:
+            pass
+        return False
+    
+    def _configure_treeview_colors(self):
+        """Configure treeview colors for dark mode."""
+        style = ttk.Style()
+        style.configure(
+            "Treeview", 
+            background="#2d2d2d", 
+            foreground="#ffffff", 
+            fieldbackground="#2d2d2d"
+        )
+        style.configure(
+            "Treeview.Heading", 
+            background="#444444", 
+            foreground="#ffffff"
+        )
+        style.map(
+            "Treeview", 
+            background=[("selected", "#505050")],
+            foreground=[("selected", "#ffffff")]
+        )
     
     def set_file_select_callback(self, callback):
         """Set the callback function for when a file is selected."""
@@ -299,4 +349,49 @@ class FileExplorer(ttk.Frame):
     def _format_time(self, timestamp):
         """Format timestamp in human-readable format."""
         dt = datetime.fromtimestamp(timestamp)
-        return dt.strftime("%Y-%m-%d %H:%M:%S") 
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    
+    def open_terminal(self):
+        """Open a terminal in the sandbox directory."""
+        sandbox_path = self.sandbox.sandbox_dir
+        
+        try:
+            # Check the operating system
+            system = platform.system()
+            
+            if system == "Windows":
+                # Windows: open cmd.exe or powershell
+                try:
+                    # Try PowerShell first
+                    subprocess.Popen(["powershell.exe", "-NoExit", "-Command", f"cd '{sandbox_path}'"])
+                except Exception:
+                    # Fall back to cmd if PowerShell fails
+                    subprocess.Popen(["cmd.exe", "/k", f"cd /d {sandbox_path}"])
+            
+            elif system == "Darwin":
+                # macOS: open Terminal.app
+                subprocess.Popen(["open", "-a", "Terminal", sandbox_path])
+            
+            else:
+                # Linux/Unix: try various terminal emulators
+                terminals = ["gnome-terminal", "xterm", "konsole", "terminator", "xfce4-terminal"]
+                for terminal in terminals:
+                    try:
+                        if terminal == "gnome-terminal":
+                            subprocess.Popen([terminal, "--working-directory", sandbox_path])
+                        else:
+                            subprocess.Popen([terminal, "-e", f"cd '{sandbox_path}' && bash"])
+                        break
+                    except Exception:
+                        continue
+                else:
+                    # If all terminal attempts failed
+                    if self.status_bar:
+                        self.status_bar.show_error("Could not find a terminal emulator. Please open a terminal manually.")
+                    return
+            
+            if self.status_bar:
+                self.status_bar.show_message(f"Terminal opened in {sandbox_path}")
+        except Exception as e:
+            if self.status_bar:
+                self.status_bar.show_error(f"Error opening terminal: {str(e)}") 

@@ -325,37 +325,45 @@ class AIToolsPanel(ttk.Frame):
         )
         refresh_btn.pack(anchor=tk.E, padx=5, pady=5)
         
+        # Prompt section
+        prompt_frame = ttk.Frame(multi_file_frame)
+        prompt_frame.pack(fill=tk.X, expand=False, pady=(0, 10))
+        
         # Prompt input
-        ttk.Label(multi_file_frame, text="Prompt:").pack(anchor=tk.W, pady=(5, 0))
-        self.multi_file_input = tk.Text(multi_file_frame, height=3, width=40, wrap=tk.WORD)
-        self.multi_file_input.pack(fill=tk.X, expand=False, pady=(0, 10))
+        ttk.Label(prompt_frame, text="Prompt:").grid(row=0, column=0, sticky=tk.W, pady=(5, 0))
+        self.multi_file_input = tk.Text(prompt_frame, height=3, width=40, wrap=tk.WORD)
+        self.multi_file_input.grid(row=1, column=0, sticky=tk.EW, columnspan=2, pady=(0, 5))
+        prompt_frame.columnconfigure(0, weight=1)
         
-        # Example prompts
-        examples_frame = ttk.LabelFrame(multi_file_frame, text="Example Prompts")
-        examples_frame.pack(fill=tk.X, expand=False, pady=(0, 10))
+        # Example prompts label and dropdown - in the same row
+        ttk.Label(prompt_frame, text="Example prompts:").grid(row=2, column=0, sticky=tk.W, pady=5)
         
-        examples = [
+        example_prompts = [
             "Generate a README.md for this project",
             "Find potential bugs across these files",
             "How do these files interact with each other?",
-            "Summarize what each file does"
+            "Summarize what each file does",
+            "Suggest improvements for these files",
+            "Create a documentation guide for this codebase"
         ]
         
-        for example in examples:
-            example_btn = ttk.Button(
-                examples_frame, 
-                text=example,
-                command=lambda e=example: self._set_example_prompt(e)
-            )
-            example_btn.pack(anchor=tk.W, padx=5, pady=2)
+        self.example_var = tk.StringVar()
+        example_combo = ttk.Combobox(
+            prompt_frame, 
+            textvariable=self.example_var,
+            values=example_prompts,
+            state="readonly"
+        )
+        example_combo.grid(row=2, column=1, sticky=tk.EW, padx=5, pady=5)
+        example_combo.bind("<<ComboboxSelected>>", lambda e: self._set_example_prompt(self.example_var.get()))
         
-        # Submit button
+        # Submit button - full width
         analyze_btn = ttk.Button(
-            multi_file_frame, 
+            prompt_frame, 
             text="Analyze Files", 
             command=self.analyze_files
         )
-        analyze_btn.pack(anchor=tk.W, pady=(0, 10))
+        analyze_btn.grid(row=3, column=0, columnspan=2, sticky=tk.EW, pady=(5, 0))
         
         # Response output
         ttk.Label(multi_file_frame, text="Analysis:").pack(anchor=tk.W, pady=(5, 0))
@@ -368,14 +376,27 @@ class AIToolsPanel(ttk.Frame):
         )
         self.multi_file_output.pack(fill=tk.BOTH, expand=True)
         
+        # Buttons frame for Save and Apply
+        action_buttons = ttk.Frame(multi_file_frame)
+        action_buttons.pack(fill=tk.X, expand=False, pady=(5, 0))
+        
         # Save to markdown button - initially disabled
         self.save_analysis_btn = ttk.Button(
-            multi_file_frame, 
+            action_buttons, 
             text="Save to Markdown", 
             command=self.save_analysis_to_markdown,
             state=tk.DISABLED
         )
-        self.save_analysis_btn.pack(anchor=tk.E, pady=(5, 0))
+        self.save_analysis_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Apply changes button - initially disabled
+        self.apply_analysis_btn = ttk.Button(
+            action_buttons, 
+            text="Apply Suggested Changes", 
+            command=self.apply_analysis_changes,
+            state=tk.DISABLED
+        )
+        self.apply_analysis_btn.pack(side=tk.RIGHT)
         
         # Initialize file lists
         self._refresh_file_lists()
@@ -423,7 +444,7 @@ class AIToolsPanel(ttk.Frame):
                 self.status_bar.show_error("Please select at least one file to analyze")
             return
         
-        prompt = self.multi_file_input.get("1.0", tk.END).strip()
+        prompt = self.multi_file_input.get(1.0, tk.END).strip()
         if not prompt:
             if self.status_bar:
                 self.status_bar.show_error("Please enter a prompt")
@@ -464,11 +485,20 @@ class AIToolsPanel(ttk.Frame):
                     if success:
                         self.set_text_widget(self.multi_file_output, analysis)
                         self.save_analysis_btn.config(state=tk.NORMAL)
+                        
+                        # Enable apply button if the prompt is about improvements
+                        prompt_lower = prompt.lower()
+                        if any(kw in prompt_lower for kw in ["improve", "refactor", "fix", "change", "update", "edit"]):
+                            self.apply_analysis_btn.config(state=tk.NORMAL)
+                        else:
+                            self.apply_analysis_btn.config(state=tk.DISABLED)
+                            
                         if self.status_bar:
                             self.status_bar.show_message("Analysis complete")
                     else:
                         self.set_text_widget(self.multi_file_output, f"Error: {analysis}")
                         self.save_analysis_btn.config(state=tk.DISABLED)
+                        self.apply_analysis_btn.config(state=tk.DISABLED)
                         if self.status_bar:
                             self.status_bar.show_error("Failed to analyze files")
                 
@@ -481,6 +511,7 @@ class AIToolsPanel(ttk.Frame):
                         self.status_bar.show_error(f"Error analyzing files: {str(e)}")
                     self.set_text_widget(self.multi_file_output, f"Error analyzing files: {str(e)}")
                     self.save_analysis_btn.config(state=tk.DISABLED)
+                    self.apply_analysis_btn.config(state=tk.DISABLED)
                     
                 self.after(0, show_error)
         
@@ -491,7 +522,7 @@ class AIToolsPanel(ttk.Frame):
     
     def save_analysis_to_markdown(self):
         """Save the multi-file analysis to a markdown file."""
-        content = self.multi_file_output.get("1.0", tk.END).strip()
+        content = self.multi_file_output.get(1.0, tk.END).strip()
         if not content:
             return
         
@@ -514,7 +545,7 @@ class AIToolsPanel(ttk.Frame):
             filename += '.md'
             
         # Format the content
-        prompt = self.multi_file_input.get("1.0", tk.END).strip()
+        prompt = self.multi_file_input.get(1.0, tk.END).strip()
         files = ", ".join(self.selected_files_list.get(0, tk.END))
         markdown_content = f"# Multi-File Analysis\n\n## Files Analyzed\n\n{files}\n\n## Prompt\n\n{prompt}\n\n## Analysis\n\n{content}"
         
@@ -805,4 +836,116 @@ class AIToolsPanel(ttk.Frame):
             self.event_generate("<<FilesGenerated>>")
         else:
             if self.status_bar:
-                self.status_bar.show_error(f"Failed to save: {message}") 
+                self.status_bar.show_error(f"Failed to save: {message}")
+    
+    def apply_analysis_changes(self):
+        """Apply changes suggested in the multi-file analysis."""
+        # Get the analysis content
+        analysis = self.multi_file_output.get(1.0, tk.END)
+        if not analysis.strip():
+            return
+            
+        # Get the selected files
+        selected_files = self.selected_files_list.get(0, tk.END)
+        if not selected_files:
+            if self.status_bar:
+                self.status_bar.show_error("No files selected to apply changes to")
+            return
+            
+        # Check if the prompt was about improvements or changes
+        prompt = self.multi_file_input.get(1.0, tk.END).strip().lower()
+        if not any(kw in prompt for kw in ["improve", "refactor", "fix", "change", "update", "edit"]):
+            if self.status_bar:
+                self.status_bar.show_error("The analysis doesn't appear to contain suggested changes to apply")
+            return
+            
+        # Confirm with user
+        from tkinter import messagebox
+        confirm = messagebox.askyesno(
+            "Confirm Apply Changes",
+            "This will attempt to apply changes from the analysis to the selected files. "
+            "This is an experimental feature and may not work perfectly. Continue?"
+        )
+        
+        if not confirm:
+            return
+            
+        # Start progress indicator
+        if self.status_bar:
+            self.status_bar.start_progress("Applying changes...")
+            
+        changes_made = 0
+        errors = 0
+        
+        def apply_changes():
+            nonlocal changes_made, errors
+            
+            try:
+                for filename in selected_files:
+                    # Read the original file
+                    success, original_content = self.sandbox.read_file(filename)
+                    if not success:
+                        errors += 1
+                        continue
+                        
+                    # Skip if nothing to process
+                    if not original_content.strip():
+                        continue
+                        
+                    # Try to find suggestions specifically for this file in the analysis
+                    file_marker = f"### {filename}" 
+                    file_sections = analysis.split(file_marker)
+                    
+                    if len(file_sections) > 1:
+                        # Found specific section for this file
+                        file_analysis = file_sections[1].split("###")[0]  # Get content until next file section
+                    else:
+                        # No specific section, use general analysis
+                        file_analysis = analysis
+                    
+                    # Detect code blocks
+                    import re
+                    code_blocks = re.findall(r"```[a-z]*\n(.*?)```", file_analysis, re.DOTALL)
+                    
+                    # If we found complete code blocks, use the last one as the new content
+                    if code_blocks and len(code_blocks[-1].strip()) > 50:  # Ensure it's substantial
+                        new_content = code_blocks[-1].strip()
+                        
+                        # Write the new content
+                        success, message = self.sandbox.write_file(filename, new_content)
+                        if success:
+                            changes_made += 1
+                        else:
+                            errors += 1
+                            
+                # Update UI in main thread
+                def update_ui():
+                    if self.status_bar:
+                        self.status_bar.stop_progress()
+                        
+                    if changes_made > 0:
+                        if self.status_bar:
+                            self.status_bar.show_message(
+                                f"Applied changes to {changes_made} file(s)" +
+                                (f", {errors} errors" if errors > 0 else "")
+                            )
+                        # Trigger file refresh
+                        self.event_generate("<<FilesGenerated>>")
+                    else:
+                        if self.status_bar:
+                            self.status_bar.show_error("No changes were applied")
+                
+                self.after(0, update_ui)
+                
+            except Exception as e:
+                def show_error():
+                    if self.status_bar:
+                        self.status_bar.stop_progress()
+                        self.status_bar.show_error(f"Error applying changes: {str(e)}")
+                    
+                self.after(0, show_error)
+        
+        # Run in thread to avoid UI freeze
+        thread = threading.Thread(target=apply_changes)
+        thread.daemon = True
+        thread.start() 
